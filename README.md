@@ -2,6 +2,17 @@
 
 This guide provides comprehensive instructions for deploying a VCF 9.0 offline depot for VCF bundles and UMDS depot for vSphere updates.
 
+## Changelog
+
+| Date | Description |
+|------|-------------|
+| 20 JAN 2026 | Add VCF 9.0.2 support |
+| 29 SEP 2025 | Add VCF 9.0.1 support |
+| 17 JUN 2025 | Add VCF 9.0.0 support |
+
+> [!WARNING]
+> The full depot with all VCF versions (9.0.0/9.0.1/9.0.2) and UMDS updates approaches **~500 GB** of data. Ensure your disk is sized accordingly. You can extend the zBox disk using `zbox-init.sh --extend-disk` after increasing the VM disk size if needed.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
@@ -23,6 +34,14 @@ This guide provides comprehensive instructions for deploying a VCF 9.0 offline d
   - [Setting up the HTTPS Depot on VCF Installer (bootstrap)](#setting-up-the-https-depot-on-vcf-installer-bootstrap)
   - [Setting up the HTTPS Depot on VCF Operations Fleet Management (post-bootstrap)](#setting-up-the-https-depot-on-vcf-operations-fleet-management-post-bootstrap)
   - [Synchronizing the ESXi Components for vSphere Updates](#synchronizing-the-esxi-components-for-vsphere-updates)
+- [Adding VCF 9.0.1 Support](#adding-vcf-901-support)
+  - [Updated Tooling](#updated-tooling)
+  - [Download VCF 9.0.1 Components](#download-vcf-901-components)
+  - [Download vSphere 9.0.1 Updates with UMDS](#download-vsphere-901-updates-with-umds)
+- [Adding VCF 9.0.2 Support](#adding-vcf-902-support)
+  - [Updated Tooling](#updated-tooling-1)
+  - [Download VCF 9.0.2 Components](#download-vcf-902-components)
+  - [Download vSphere 9.0.2 Updates with UMDS](#download-vsphere-902-updates-with-umds)
 
 
 
@@ -60,7 +79,7 @@ The image above shows the two DNS A records we added:
 Use this as the base Linux template, or choose an alternative that meets your requirements. This documentation is based on zBox as the Linux appliance.
 
 - zBox is available at: [https://github.com/zpodfactory/packer-zbox](https://github.com/zpodfactory/packer-zbox?tab=readme-ov-file#zbox-appliance)
-- Direct download link: [https://cloud.tsugliani.fr/ova/zbox-12.11.ova](https://cloud.tsugliani.fr/ova/zbox-12.11.ova)
+- Direct download link: [https://cloud.tsugliani.fr/ova/zbox-13.3.ova](https://cloud.tsugliani.fr/ova/zbox-13.3.ova)
 
 
 Extend the disk to 500GB (or sufficient capacity to accommodate your expected depot size; current total usage is approximately 140GB).
@@ -655,12 +674,17 @@ b5079d72b676916eb6246143ae82caae95e81c896364e399c34c60e0e0b38492
 
 ### Traefik Configuration
 
+> [!IMPORTANT]
+> This setup uses **Let's Encrypt** to provide trusted TLS certificates. Using self-signed or invalid certificates would require additional steps on the SDDC Manager appliance (and later on every deployed VCF component) to bypass certificate validation, which breaks the seamless lifecycle management experience. These workarounds are covered in [Quick Tip - Establish trust between VCF 9.0 Installer and VCF Offline Depot w/self-sign TLS certificate](https://williamlam.com/2025/08/quick-tip-establish-trust-between-vcf-9-0-installer-and-vcf-offline-depot-w-self-sign-tls-certificate.html) but are best avoided in production.
+
 Start with the Traefik configuration as it serves as the main management point.
 
 The Traefik dashboard will be accessible through username/password authentication (very practical for supervision and troubleshooting).
 
 
 Create the following file at `$HOME/docker-compose/traefik/docker-compose.yml`:
+
+> **File available**: [`docker-compose/traefik/docker-compose.yml`](docker-compose/traefik/docker-compose.yml)
 
 ```yaml
 services:
@@ -725,6 +749,8 @@ networks:
 
 Use an `.env` file for secrets:
 
+> **File available**: [`docker-compose/traefik/.env.example`](docker-compose/traefik/.env.example)
+
 ```ini
 ACME_EMAIL=myemail@domain.com
 CF_DNS_API_TOKEN=XXXXX
@@ -739,6 +765,9 @@ admin:$$apr1$$W31Io8c9$$V0pZ0oHmY5okjX64cIxEJ0
 ```
 
 Create the `allowiprange.yml` file in the `dynamic` directory (`$HOME/docker-compose/traefik/dynamic/allowiprange.yml`):
+
+> **File available**: [`docker-compose/traefik/dynamic/allowiprange.yml`](docker-compose/traefik/dynamic/allowiprange.yml)
+
 ```yaml
 http:
   middlewares:
@@ -771,6 +800,7 @@ Check the logs to ensure everything started correctly:
 
 Depot Docker Compose configuration (`$HOME/docker-compose/depot/docker-compose.yml`):
 
+> **File available**: [`docker-compose/depot/docker-compose.yml`](docker-compose/depot/docker-compose.yml)
 
 ```yaml
 services:
@@ -817,6 +847,8 @@ networks:
 Nginx configuration modified to enable directory indexing by default (useful for troubleshooting and navigating the depot structure, but note that this is insecure).
 
 Nginx configuration file: `$HOME/docker-compose/depot/conf/autoindex.conf`
+
+> **File available**: [`docker-compose/depot/conf/autoindex.conf`](docker-compose/depot/conf/autoindex.conf)
 
 ```shell
 server {
@@ -930,8 +962,121 @@ You will need to import that image into the VCF Operations `Image Management`, a
 Refer to the [Managing vSphere Lifecycle Manager Images for VMware Cloud Foundation](https://techdocs.broadcom.com/us/en/vmware-cis/vcf/vcf-9-0-and-later/9-0/lifecycle-management/lifecycle-management-of-vcf-core-components/managing-vsphere-lifecycle-manager-images-for-vmware-cloud-foundation.html) and [Managing Host and Cluster Lifecycle](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/9-0/managing-host-and-cluster-lifecycle.html) documentation for more details
 
 
+---
+
+## Adding VCF 9.0.1 Support
+
+> [!NOTE]
+> This section covers adding VCF 9.0.1 components to an existing VCF 9.0 offline depot.
+
+### Updated Tooling
+
+<!-- TBD: Update zBox version/download link if changed -->
+Download the updated VCF download tool from the [Broadcom Support Portal](https://support.broadcom.com/group/ecx/productfiles?subFamily=VMware%20Cloud%20Foundation&displayGroup=VMware%20Cloud%20Foundation%209&release=9.0.1.0&os=&servicePk=&language=EN):
+
+<!-- TBD: Update zBox version/download link if changed -->
+
+```shell
+❱ apt update && apt dist-upgrade -y
+```
+
+```shell
+❱ tar -xvzf vcf-download-tool-9.0.1.0.24962179.tar.gz -C /usr/local
+❱ rm vcf-download-tool-9.0.1.0.24962179.tar.gz
+```
+
+### Download VCF 9.0.1 Components
+
+<!-- TBD: Update vcf-version and verify command output -->
+
+Download all 9.0.1 components (install + upgrade) into the existing depot:
+
+```shell
+❱ vcf-download-tool binaries download --vcf-version 9.0.1 --depot-store /depot --depot-download-token-file /etc/broadcom-token
+```
 
 
+### Download vSphere 9.0.1 Updates with UMDS
+
+> [!CAUTION]
+> Updating the `vcf-download-tool` may overwrite the UMDS configuration. If so, you will need to re-run the UMDS installation and reconfigure it before downloading updates.
+
+If the UMDS configuration was reset by the tooling update, redo the following steps:
+
+```shell
+# Re-install UMDS (go through the installer, enable/disable CEIP, accept eula)
+❱ vcf-download-tool umds install
+```
+
+Then reconfigure UMDS by following all steps from the [Download vSphere Updates with UMDS](#download-vsphere-updates-with-umds) section again (entitlement token, patch store location, host version selection).
+
+Once UMDS is configured, download the latest updates:
+
+```shell
+❱ /usr/local/vmware-umds/bin/vmware-umds -D
+```
+
+```shell
+❱ chmod -R 755 /depot/umds-patch-store
+```
+
+You should now have all components for VCF 9.0.0 and 9.0.1 and the latest UMDS patches in your depot.
+
+---
+
+## Adding VCF 9.0.2 Support
+
+> [!NOTE]
+> This section covers adding VCF 9.0.2 components to an existing VCF 9.0/9.0.1 offline depot.
+
+### Updated Tooling
+
+Download the updated VCF download tool from the [Broadcom Support Portal](https://support.broadcom.com/group/ecx/productfiles?subFamily=VMware%20Cloud%20Foundation&displayGroup=VMware%20Cloud%20Foundation%209&release=9.0.2.0&os=&servicePk=&language=EN):
+
+<!-- TBD: Update zBox version/download link if changed -->
+
+```shell
+❱ apt update && apt dist-upgrade -y
+```
+
+```shell
+❱ tar -xvzf vcf-download-tool-9.0.2.0.25151284.tar.gz -C /usr/local
+❱ rm vcf-download-tool-9.0.2.0.25151284.tar.gz
+```
+
+### Download VCF 9.0.2 Components
+
+<!-- TBD: Update vcf-version and verify command output -->
+
+Download all 9.0.2 components (install + upgrade) into the existing depot:
+
+```shell
+❱ vcf-download-tool binaries download --vcf-version 9.0.2 --depot-store /depot --depot-download-token-file /etc/broadcom-token
+```
 
 
+### Download vSphere 9.0.2 Updates with UMDS
 
+> [!CAUTION]
+> Updating the `vcf-download-tool` may overwrite the UMDS configuration. If so, you will need to re-run the UMDS installation and reconfigure it before downloading updates.
+
+If the UMDS configuration was reset by the tooling update, redo the following steps:
+
+```shell
+# Re-install UMDS (go through the installer, enable/disable CEIP, accept eula)
+❱ vcf-download-tool umds install
+```
+
+Then reconfigure UMDS by following all steps from the [Download vSphere Updates with UMDS](#download-vsphere-updates-with-umds) section again (entitlement token, patch store location, host version selection).
+
+Once UMDS is configured, download the latest updates:
+
+```shell
+❱ /usr/local/vmware-umds/bin/vmware-umds -D
+```
+
+```shell
+❱ chmod -R 755 /depot/umds-patch-store
+```
+
+You should now have all components for VCF 9.0.0, 9.0.1 and 9.0.2 and the latest UMDS patches in your depot.
