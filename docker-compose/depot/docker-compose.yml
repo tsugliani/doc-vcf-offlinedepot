@@ -1,0 +1,39 @@
+services:
+  depot:
+    image: nginx:1.27-alpine   # tiny, static-only
+    container_name: depot
+    restart: unless-stopped
+    volumes:
+      - /depot:/usr/share/nginx/html:ro
+      - ./conf/autoindex.conf:/etc/nginx/conf.d/autoindex.conf:ro
+    networks:
+      - service-network
+    labels:
+      - "traefik.enable=true"
+
+      # Public route — all paths except /umds-patch-store
+      - "traefik.http.routers.umds.rule=Host(`depot.domain.com`) && PathPrefix(`/umds-patch-store`)"
+      - "traefik.http.routers.umds.entrypoints=websecure"
+      - "traefik.http.routers.umds.tls.certresolver=cloudflare"
+      - "traefik.http.routers.umds.tls=true"
+      - "traefik.http.routers.umds.priority=1"
+
+      # Middleware: IP whitelist for unauthenticated route
+      - "traefik.http.routers.umds.middlewares=allow-ip-range@file"
+
+      # Protected route — just /PROD
+      - "traefik.http.routers.vcf.rule=Host(`depot.domain.com`) && PathPrefix(`/PROD`)"
+      - "traefik.http.routers.vcf.entrypoints=websecure"
+      - "traefik.http.routers.vcf.tls.certresolver=cloudflare"
+      - "traefik.http.routers.vcf.tls=true"
+      - "traefik.http.routers.vcf.priority=2"
+      - "traefik.http.routers.vcf.middlewares=secure-auth"
+
+      # Basic-Auth middleware
+      - "traefik.http.middlewares.secure-auth.basicauth.users=secure:$$apr1$$A9IuAz56$$1Vnjut9rHRuTJo01EQVe51"
+      - "traefik.http.routers.vcf.middlewares=secure-auth@docker"
+
+networks:
+ service-network:
+   name: service-network
+   external: true

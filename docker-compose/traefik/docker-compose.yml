@@ -1,0 +1,58 @@
+services:
+  traefik:
+    image: traefik
+    container_name: traefik
+    dns:
+      - 1.1.1.1
+    restart: unless-stopped
+    command:
+      - "--log.level=INFO"
+
+      # Dashboard
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+
+      # Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+
+      # Entrypoint (HTTPS only)
+      - "--entrypoints.websecure.address=:443"
+
+      # Let's Encrypt with Cloudflare DNS challenge
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge=true"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.delaybeforecheck=0"
+      - "--certificatesresolvers.cloudflare.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json"
+
+      # Add dynamic files for ip allow list
+      # This will be used to filter out access to the VMware UMDS "non authenticated" repository
+      - "--providers.file.directory=/etc/traefik/dynamic"
+
+    ports:
+      - "443:443"
+
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+
+    volumes:
+      - ./letsencrypt:/letsencrypt
+      - ./dynamic:/etc/traefik/dynamic
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.domain.com`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls.certresolver=cloudflare"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$W31Io8c9$$V0pZ0oHmY5okjX64cIxEJ0"
+
+    networks:
+      - service-network
+
+networks:
+  service-network:
+    external: true
